@@ -134,7 +134,7 @@ parameters:
   - name: APP_NAME
     displayName: "Application Name"
     description: "Name of the application to be deployed."
-    value: "hello-world"
+    value: "hello-world-java"
     required: true
   - name: NAMESPACE
     displayName: "Namespace Name"
