@@ -1,0 +1,168 @@
+kind: Template
+apiVersion: template.openshift.io/v1
+metadata:
+  name: camel-services-template
+objects:
+  - kind: Deployment
+    apiVersion: apps/v1
+    metadata:
+      annotations:
+        app.openshift.io/route-disabled: 'false'
+        alpha.image.policy.openshift.io/resolve-names: '*'
+        image.openshift.io/triggers: >-
+          [{"from":{"kind":"ImageStreamTag","name":"${APP_NAME}:${IMAGE_TAG}","namespace":"${NAMESPACE}"},"fieldPath":"spec.template.spec.containers[?(@.name==\"${APP_NAME}\")].image","pause":"false"}]
+      name: ${APP_NAME}
+      namespace: ${NAMESPACE}
+      labels:
+        app: ${APP_NAME}
+        app.kubernetes.io/component: ${APP_NAME}
+        app.kubernetes.io/instance: ${APP_NAME}
+        app.kubernetes.io/name: ${APP_NAME}
+        app.openshift.io/runtime: camel
+        app.openshift.io/runtime-namespace: ${NAMESPACE}
+        app.openshift.io/runtime-version: ${IMAGE_TAG}
+    spec:
+      selector:
+        matchLabels:
+          app: ${APP_NAME}
+      template:
+        metadata:
+          labels:
+            app: ${APP_NAME}
+            deployment: ${APP_NAME}
+        spec:
+          containers:
+            - resources:
+                requests:
+                  memory: 500M
+              name: ${APP_NAME}
+              env:
+                - name: SPRING_PROFILES_ACTIVE
+                  value: ${ENVIRONMENT}
+              ports:
+                - containerPort: 8080
+                  protocol: TCP
+                - containerPort: 8443
+                  protocol: TCP
+              image: ${REGISTRY_URL}/${NAMESPACE}/${APP_NAME}:${IMAGE_TAG}
+  - kind: Service
+    apiVersion: v1
+    metadata:
+      name: ${APP_NAME}
+      namespace: ${NAMESPACE}
+      labels:
+        app: ${APP_NAME}
+        app.kubernetes.io/component: ${APP_NAME}
+        app.kubernetes.io/instance: ${APP_NAME}
+        app.kubernetes.io/name: ${APP_NAME}
+    spec:
+      type: ClusterIP
+      selector:
+        app: ${APP_NAME}
+        deployment: ${APP_NAME}
+      ports:
+        - name: 8080-tcp
+          protocol: TCP
+          port: 8080
+          targetPort: 8080
+        - name: 8443-tcp
+          protocol: TCP
+          port: 8443
+          targetPort: 8443
+  - kind: Route
+    apiVersion: route.openshift.io/v1
+    metadata:
+      name: ${APP_NAME}
+      namespace: ${NAMESPACE}
+      labels:
+        app: ${APP_NAME}
+        app.kubernetes.io/component: ${APP_NAME}
+        app.kubernetes.io/instance: ${APP_NAME}
+        app.kubernetes.io/name: ${APP_NAME}
+      annotations:
+        openshift.io/host.generated: 'true'
+    spec:
+      to:
+        kind: Service
+        name: ${APP_NAME}
+        weight: 100
+      port:
+        targetPort: 8080-tcp
+      tls:
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+  - kind: HorizontalPodAutoscaler
+    apiVersion: autoscaling/v2
+    metadata:
+      name: ${APP_NAME}
+      namespace: ${NAMESPACE}
+    labels:
+        app: ${APP_NAME}
+        app.kubernetes.io/component: ${APP_NAME}
+        app.kubernetes.io/instance: ${APP_NAME}
+        app.kubernetes.io/name: ${APP_NAME}
+    spec:
+      scaleTargetRef:
+        kind: Deployment
+        name: ${APP_NAME}
+        apiVersion: apps/v1
+      minReplicas: ${{MIN_REPLICAS}}
+      maxReplicas: ${{MAX_REPLICAS}}
+      metrics:
+        - type: Resource
+          resource:
+            name: memory
+            target:
+              type: Utilization
+              averageUtilization: 400
+  - kind: ImageStream
+    apiVersion: image.openshift.io/v1
+    metadata:
+      name: ${APP_NAME}
+      namespace: ${NAMESPACE}
+      labels:
+        app: ${APP_NAME}
+        app.kubernetes.io/component: ${APP_NAME}
+        app.kubernetes.io/instance: ${APP_NAME}
+        app.kubernetes.io/name: ${APP_NAME}
+        app.openshift.io/runtime: java
+        app.openshift.io/runtime-version: openjdk-17-ubi8
+    spec:
+      lookupPolicy:
+        local: false
+parameters:
+  - name: APP_NAME
+    displayName: "Application Name"
+    description: "Name of the application to be deployed."
+    value: "hello-world"
+    required: true
+  - name: NAMESPACE
+    displayName: "Namespace Name"
+    description: "Name of the namespace to be used for deployment."
+    value: "test-java"
+    required: true
+  - name: IMAGE_TAG
+    displayName: "Image Tag"
+    description: "Name of the image tag."
+    value: "latest"
+    required: true
+  - name: REGISTRY_URL
+    displayName: "Image Registry url"
+    description: "Url of the image registory."
+    value: "image-registry.openshift-image-registry.svc:5000"
+    required: true
+  - name: ENVIRONMENT
+    displayName: "Environment"
+    description: "Name of the Environment."
+    value: "dev"
+    required: true
+  - name: MIN_REPLICAS
+    displayName: "Replicas"
+    description: "Number of replicas to run"
+    value: "1"
+    required: true
+  - name: MAX_REPLICAS
+    displayName: "Replicas"
+    description: "Number of replicas to run"
+    value: "3"
+    required: true
